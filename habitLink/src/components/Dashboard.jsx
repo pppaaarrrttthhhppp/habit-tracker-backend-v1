@@ -1,10 +1,60 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle, Users, Flame, Award, ChevronDown, ZoomIn, ZoomOut, RotateCcw, Sparkles, ArrowRight, Brain, Activity, Clock, Plus } from 'lucide-react';
 import './Dashboard.css';
+
+const API_URL = 'http://localhost:8000';
 
 const Dashboard = () => {
   const [isSyncing, setIsSyncing] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [stats, setStats] = useState(null);
+  const [habits, setHabits] = useState([]);
+  const [todayCheckIns, setTodayCheckIns] = useState({ completed: 0, habit_ids: [] });
+  const [influencers, setInfluencers] = useState([]);
+  const [error, setError] = useState('');
+
+  const loadDashboard = async () => {
+    try {
+      const [statsResponse, habitsResponse, checkInsResponse, influencersResponse] = await Promise.all([
+        fetch(`${API_URL}/api/user/stats`),
+        fetch(`${API_URL}/api/habits`),
+        fetch(`${API_URL}/api/check-ins/today`),
+        fetch(`${API_URL}/api/influencers`),
+      ]);
+
+      if ([statsResponse, habitsResponse, checkInsResponse, influencersResponse].some(response => !response.ok)) {
+        throw new Error('Unable to load dashboard data');
+      }
+
+      setStats(await statsResponse.json());
+      setHabits(await habitsResponse.json());
+      setTodayCheckIns(await checkInsResponse.json());
+      setInfluencers(await influencersResponse.json());
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const logHabit = async (habitId) => {
+    const response = await fetch(`${API_URL}/api/habits/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ habit_id: habitId }),
+    });
+
+    if (response.ok) {
+      await loadDashboard();
+    }
+  };
+
+  const quickStats = stats?.quick_stats || {};
+  const topInfluencer = influencers[0];
 
   return (
     <div className="dashboard">
@@ -39,7 +89,7 @@ const Dashboard = () => {
               <CheckCircle size={20} />
             </div>
           </div>
-          <div className="stat-value">3/5</div>
+          <div className="stat-value">{quickStats.today_check_ins || todayCheckIns.completed}/{habits.length}</div>
           <div className="stat-footer success-text">
             ↗ Keep going!
           </div>
@@ -52,7 +102,7 @@ const Dashboard = () => {
               <Users size={20} />
             </div>
           </div>
-          <div className="stat-value">12</div>
+          <div className="stat-value">{quickStats.friends_count || 0}</div>
           <div className="stat-footer text-muted">
             More connections, more impact!
           </div>
@@ -65,7 +115,7 @@ const Dashboard = () => {
               <Flame size={20} />
             </div>
           </div>
-          <div className="stat-value">4</div>
+          <div className="stat-value">{quickStats.active_habits || habits.length}</div>
           <div className="stat-footer success-text">
             ↑ +1 from last week
           </div>
@@ -78,7 +128,7 @@ const Dashboard = () => {
               <Award size={20} />
             </div>
           </div>
-          <div className="stat-value text-lg">Arjun</div>
+          <div className="stat-value text-lg">{topInfluencer?.name || 'None yet'}</div>
           <div className="stat-footer text-muted">
             (Running)
           </div>
@@ -127,35 +177,22 @@ const Dashboard = () => {
               <span className="view-all">View All</span>
             </div>
             <div className="habits-list">
-              <div className="habit-card">
-                <div className="habit-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>🏃</div>
-                <div>
-                  <h4>Running</h4>
-                  <p>3/7 days</p>
-                </div>
-                <div className="progress-bar"><div className="progress-fill" style={{ width: '40%', background: '#10b981' }}></div></div>
-              </div>
-              <div className="habit-card">
-                <div className="habit-icon" style={{ background: '#fae8ff', color: '#c026d3' }}>🧘‍♀️</div>
-                <div>
-                  <h4>Meditation</h4>
-                  <p>2/5 days</p>
-                </div>
-                <div className="progress-bar"><div className="progress-fill" style={{ width: '40%', background: '#8b5cf6' }}></div></div>
-              </div>
-              <div className="habit-card">
-                <div className="habit-icon" style={{ background: '#dbeafe', color: '#2563eb' }}>📖</div>
-                <div>
-                  <h4>Reading</h4>
-                  <p>4/7 days</p>
-                </div>
-                <div className="progress-bar"><div className="progress-fill" style={{ width: '60%', background: '#3b82f6' }}></div></div>
-              </div>
+              {habits.map(habit => (
+                <button className="habit-card" key={habit.id} onClick={() => logHabit(habit.id)} type="button">
+                  <div className="habit-icon" style={{ background: '#e0f2fe', color: habit.color }}>✓</div>
+                  <div>
+                    <h4>{habit.title}</h4>
+                    <p>{habit.completed}/{habit.target_days} days</p>
+                  </div>
+                  <div className="progress-bar"><div className="progress-fill" style={{ width: `${habit.progress}%`, background: habit.color }}></div></div>
+                </button>
+              ))}
               <div className="habit-card" style={{ justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', cursor: 'pointer' }}>
                 <Plus size={24} color="#94a3b8" />
                 <h4 style={{ color: '#64748b', marginTop: '8px' }}>Add Habit</h4>
               </div>
             </div>
+            {error && <p className="text-muted" role="alert">{error}. Start the FastAPI server on port 8000.</p>}
           </div>
 
           <div className="ai-promo-banner glass-card" style={{ padding: '24px' }}>
@@ -212,33 +249,18 @@ const Dashboard = () => {
               <h3><Users size={18} color="#6366f1" /> Top Influencers for Your Habits</h3>
             </div>
             <div className="side-widgets">
-              <div className="side-widget-item">
-                <span style={{ fontWeight: '800', color: '#94a3b8', width: '16px' }}>1</span>
-                <img src="https://ui-avatars.com/api/?name=Arjun" className="avatar" />
-                <div className="item-info">
-                  <h4>Arjun</h4>
-                  <p>Running</p>
+              {influencers.map((influencer, index) => (
+                <div className="side-widget-item" key={influencer.id}>
+                  <span style={{ fontWeight: '800', color: '#94a3b8', width: '16px' }}>{index + 1}</span>
+                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(influencer.name)}`} className="avatar" />
+                  <div className="item-info">
+                    <h4>{influencer.name}</h4>
+                    <p>Habit influence</p>
+                  </div>
+                  <div className="item-score">{Number(influencer.score).toFixed(2)}</div>
                 </div>
-                <div className="item-score">0.72</div>
-              </div>
-              <div className="side-widget-item">
-                <span style={{ fontWeight: '800', color: '#94a3b8', width: '16px' }}>2</span>
-                <img src="https://ui-avatars.com/api/?name=Meera" className="avatar" />
-                <div className="item-info">
-                  <h4>Meera</h4>
-                  <p>Yoga</p>
-                </div>
-                <div className="item-score">0.68</div>
-              </div>
-              <div className="side-widget-item">
-                <span style={{ fontWeight: '800', color: '#94a3b8', width: '16px' }}>3</span>
-                <img src="https://ui-avatars.com/api/?name=Priya" className="avatar" />
-                <div className="item-info">
-                  <h4>Priya</h4>
-                  <p>Meditation</p>
-                </div>
-                <div className="item-score">0.61</div>
-              </div>
+              ))}
+              {!influencers.length && <p className="text-muted">No influencers yet.</p>}
             </div>
           </div>
 
