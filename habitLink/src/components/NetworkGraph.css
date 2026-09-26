@@ -2,20 +2,74 @@
   display: flex;
   flex-direction: column;
   flex-grow: 1;
+  min-width: 0;
 }
 
 .network-graph-controls {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.network-graph-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.network-graph-title span {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1e1b4b;
+}
+
+.network-graph-title small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.zoom-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.zoom-controls button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-glass);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #3730a3;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.zoom-controls button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .network-graph-canvas {
   position: relative;
   flex-grow: 1;
   min-height: 320px;
-  background: rgba(255, 255, 255, 0.4);
-  border-radius: 16px;
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(99, 102, 241, 0.06),
+      transparent 48%
+    ),
+    rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
   overflow: hidden;
 }
 
@@ -31,63 +85,176 @@
 .network-graph-svg {
   display: block;
   cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.network-graph-svg:active {
+  cursor: grabbing;
 }
 
 .network-node {
   cursor: grab;
+  transition: opacity 0.2s ease;
+}
+
+.network-node:hover {
+  opacity: 0.96;
 }
 
 .network-node:active {
   cursor: grabbing;
 }
 
+.network-node.selected {
+  cursor: grabbing;
+}
+
+.network-node-glow {
+  pointer-events: none;
+}
+
 .network-node-label {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   fill: #ffffff;
   pointer-events: none;
   user-select: none;
 }
 
 .network-node-label.you {
-  font-size: 14px;
+  font-size: 17px;
+}
+
+.network-center-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  fill: rgba(255, 255, 255, 0.82);
+  pointer-events: none;
+}
+
+.network-friend-name {
+  font-size: 15px;
+  font-weight: 800;
+  fill: #1e1b4b;
+  pointer-events: none;
+}
+
+.network-friend-habit {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #64748b;
+  pointer-events: none;
+}
+
+.network-friend-score {
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.network-edge-label {
+  font-size: 11px;
+  font-weight: 800;
+  fill: #475569;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .network-graph-tooltip {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 18px;
   margin-top: 12px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.7);
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.82);
   border: 1px solid var(--border-glass);
-  border-radius: 12px;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(30, 27, 75, 0.07);
+}
+
+.network-tooltip-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.network-tooltip-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .network-graph-tooltip h4 {
-  font-size: 14px;
+  margin: 0 0 4px;
+  font-size: 15px;
   font-weight: 800;
   color: #1e1b4b;
 }
 
 .network-graph-tooltip p {
+  margin: 3px 0;
   font-size: 12px;
+  line-height: 1.45;
   color: var(--text-secondary);
 }
 
+.network-graph-tooltip strong {
+  color: #312e81;
+}
+
 .network-graph-tooltip-close {
-  background: none;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(241, 245, 249, 0.8);
   border: none;
-  font-size: 20px;
-  line-height: 1;
+  border-radius: 8px;
   color: var(--text-secondary);
   cursor: pointer;
 }
 
+.network-graph-tooltip-close:hover {
+  background: rgba(226, 232, 240, 0.95);
+  color: #1e1b4b;
+}
+
+.network-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 10px;
+  padding: 0 2px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .legend-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   display: inline-block;
 }
@@ -95,6 +262,24 @@
 .network-legend-hint {
   margin-left: auto;
   font-style: italic;
-  color: var(--text-secondary);
   font-weight: 500;
+}
+
+@media (max-width: 760px) {
+  .network-graph-controls {
+    align-items: flex-start;
+  }
+
+  .network-graph-title small {
+    max-width: 240px;
+  }
+
+  .network-legend-hint {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .network-graph-tooltip {
+    padding: 12px;
+  }
 }
