@@ -1,39 +1,37 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, Users, Flame, Award, ChevronDown, ZoomIn, ZoomOut, RotateCcw, Sparkles, ArrowRight, Brain, Activity, Clock, Plus } from 'lucide-react';
+import { CheckCircle, Users, Flame, Award, ChevronDown, Sparkles, ArrowRight, Brain, Clock, Plus } from 'lucide-react';
+import NetworkGraph from './NetworkGraph';
+import { getUserStats, getHabits, getTodayCheckIns, getInfluencers, getPairingRecommendation, logHabitCheckIn } from '../api';
 import './Dashboard.css';
 
-const API_URL = 'http://localhost:8000';
-
-const Dashboard = () => {
-  const [isSyncing, setIsSyncing] = useState(true);
-  const [zoomLevel, setZoomLevel] = useState(100);
+const Dashboard = ({ onNavigate }) => {
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [habits, setHabits] = useState([]);
   const [todayCheckIns, setTodayCheckIns] = useState({ completed: 0, habit_ids: [] });
   const [influencers, setInfluencers] = useState([]);
+  const [pairing, setPairing] = useState(null);
   const [error, setError] = useState('');
 
   const loadDashboard = async () => {
     try {
-      const [statsResponse, habitsResponse, checkInsResponse, influencersResponse] = await Promise.all([
-        fetch(`${API_URL}/api/user/stats`),
-        fetch(`${API_URL}/api/habits`),
-        fetch(`${API_URL}/api/check-ins/today`),
-        fetch(`${API_URL}/api/influencers`),
+      const [statsData, habitsData, checkInsData, influencersData, pairingData] = await Promise.all([
+        getUserStats(),
+        getHabits(),
+        getTodayCheckIns(),
+        getInfluencers(),
+        getPairingRecommendation(),
       ]);
 
-      if ([statsResponse, habitsResponse, checkInsResponse, influencersResponse].some(response => !response.ok)) {
-        throw new Error('Unable to load dashboard data');
-      }
-
-      setStats(await statsResponse.json());
-      setHabits(await habitsResponse.json());
-      setTodayCheckIns(await checkInsResponse.json());
-      setInfluencers(await influencersResponse.json());
+      setStats(statsData);
+      setHabits(habitsData);
+      setTodayCheckIns(checkInsData);
+      setInfluencers(influencersData);
+      setPairing(pairingData);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
-      setIsSyncing(false);
+      setLoading(false);
     }
   };
 
@@ -42,29 +40,38 @@ const Dashboard = () => {
   }, []);
 
   const logHabit = async (habitId) => {
-    const response = await fetch(`${API_URL}/api/habits/log`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ habit_id: habitId }),
-    });
-
-    if (response.ok) {
+    try {
+      await logHabitCheckIn(habitId);
       await loadDashboard();
+    } catch (logError) {
+      setError(logError.message);
     }
   };
 
   const quickStats = stats?.quick_stats || {};
   const topInfluencer = influencers[0];
+  const recommendation = pairing?.recommendation;
+
+  // Recent activity is built from data the app already has (which habits
+  // were checked in today) rather than a separate activity-feed endpoint,
+  // since the backend doesn't expose one.
+  const checkedInHabits = habits.filter((habit) => todayCheckIns.habit_ids?.includes(habit.id));
 
   return (
     <div className="dashboard">
       <header className="dashboard-header" style={{ marginBottom: '32px' }}>
         <div className="greeting">
           <h1>Good evening, Pallavi!</h1>
-          <p>Your habits are more powerful when shared. Let's build a healthier you, together.</p>
+          <p>{loading ? 'Syncing your data…' : "Your habits are more powerful when shared. Let's build a healthier you, together."}</p>
         </div>
         <div className="header-actions">
-          <div className="icon-wrapper" style={{ width: '40px', height: '40px', background: 'var(--bg-glass)', borderRadius: '50%', cursor: 'pointer', border: '1px solid var(--border-glass)' }}>
+          <div
+            className="icon-wrapper"
+            style={{ width: '40px', height: '40px', background: 'var(--bg-glass)', borderRadius: '50%', cursor: 'pointer', border: '1px solid var(--border-glass)' }}
+            onClick={() => onNavigate?.('Notifications')}
+            role="button"
+            tabIndex={0}
+          >
             <span style={{ position: 'relative' }}>
               🔔
               <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', background: 'red', borderRadius: '50%' }}></span>
@@ -153,28 +160,13 @@ const Dashboard = () => {
               </div>
             </div>
             
-            <div className="network-chart-placeholder" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', 
-              color: 'var(--text-secondary)', background: 'transparent'
-            }}>
-              {/* Fake Network Graph Image or SVG placeholder */}
-              <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', zIndex: 2, border: '4px solid white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                   You
-                 </div>
-                 {/* Decorative connecting lines for glass effect */}
-                 <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none' }}>
-                   <circle cx="50%" cy="50%" r="120" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" fill="none" strokeDasharray="5,5" />
-                   <circle cx="50%" cy="50%" r="200" stroke="rgba(99, 102, 241, 0.1)" strokeWidth="1" fill="none" />
-                 </svg>
-              </div>
-            </div>
+            <NetworkGraph height={340} />
           </div>
 
           <div className="glass-card widget-card">
             <div className="section-header">
               <h3>Your Habits</h3>
-              <span className="view-all">View All</span>
+              <span className="view-all" onClick={() => onNavigate?.('My Habits')}>View All</span>
             </div>
             <div className="habits-list">
               {habits.map(habit => (
@@ -205,7 +197,7 @@ const Dashboard = () => {
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Get personalized recommendations based on your goals, habits and friend network.</p>
               </div>
             </div>
-            <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => onNavigate?.('Pairing Recommendations')} type="button">
               Get Recommendations <ArrowRight size={16} />
             </button>
           </div>
@@ -217,31 +209,31 @@ const Dashboard = () => {
           <div className="glass-card widget-card">
             <div className="section-header">
               <h3><Sparkles size={18} color="#6366f1" /> AI Pairing Recommendation</h3>
-              <span className="view-all">View All</span>
+              <span className="view-all" onClick={() => onNavigate?.('Pairing Recommendations')}>View All</span>
             </div>
             
-            <div style={{ background: 'rgba(255,255,255,0.5)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.8)' }}>
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-                <img src="https://ui-avatars.com/api/?name=Arjun&background=c7d2fe&color=3730a3" className="avatar" style={{ width: '48px', height: '48px', borderRadius: '12px' }} />
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <h4 style={{ fontSize: '15px', fontWeight: '800', color: '#1e1b4b' }}>Pair with Arjun</h4>
-                    <span style={{ fontSize: '10px', background: '#d1fae5', color: '#059669', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>High Match (92%)</span>
+            {recommendation ? (
+              <div style={{ background: 'rgba(255,255,255,0.5)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.8)' }}>
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(recommendation.name)}&background=c7d2fe&color=3730a3`} className="avatar" style={{ width: '48px', height: '48px', borderRadius: '12px' }} />
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <h4 style={{ fontSize: '15px', fontWeight: '800', color: '#1e1b4b' }}>Pair with {recommendation.name}</h4>
+                      <span style={{ fontSize: '10px', background: '#d1fae5', color: '#059669', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>{Math.round(recommendation.pairing_score * 100)}% match</span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                      {recommendation.explanation}
+                    </p>
                   </div>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    Your running patterns show a strong temporal association, and your goals and schedules are well aligned.
-                  </p>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Influence Score<br/><span style={{color:'#1e1b4b'}}>{Number(recommendation.score).toFixed(2)}</span></div>
+                  <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Pairing Score<br/><span style={{color:'#1e1b4b'}}>{Number(recommendation.pairing_score).toFixed(2)}</span></div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Similar Goal<br/><span style={{color:'#1e1b4b'}}>(Running)</span></div>
-                <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Schedule Match<br/><span style={{color:'#1e1b4b'}}>(4/5)</span></div>
-                <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Influence Score<br/><span style={{color:'#1e1b4b'}}>(0.72)</span></div>
-              </div>
-              <button className="btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                View Full Explanation <ArrowRight size={16} />
-              </button>
-            </div>
+            ) : (
+              <p className="text-muted">{pairing?.message || 'Connect with a friend to receive a pairing recommendation.'}</p>
+            )}
           </div>
 
           <div className="glass-card widget-card">
@@ -267,30 +259,19 @@ const Dashboard = () => {
           <div className="glass-card widget-card">
             <div className="section-header">
               <h3><Clock size={18} color="#6366f1" /> Recent Activity</h3>
-              <span className="view-all">View All</span>
             </div>
             <div className="side-widgets">
-              <div className="side-widget-item">
-                <div className="icon-wrapper success" style={{ width: '32px', height: '32px' }}><CheckCircle size={14}/></div>
-                <div className="item-info">
-                  <h4 style={{ fontSize: '13px' }}>You completed Running</h4>
-                  <p style={{ fontSize: '11px' }}>2 hours ago</p>
+              {checkedInHabits.length ? checkedInHabits.map((habit) => (
+                <div className="side-widget-item" key={habit.id}>
+                  <div className="icon-wrapper success" style={{ width: '32px', height: '32px' }}><CheckCircle size={14}/></div>
+                  <div className="item-info">
+                    <h4 style={{ fontSize: '13px' }}>You completed {habit.name}</h4>
+                    <p style={{ fontSize: '11px' }}>Today</p>
+                  </div>
                 </div>
-              </div>
-              <div className="side-widget-item">
-                <div className="icon-wrapper purple" style={{ width: '32px', height: '32px' }}><CheckCircle size={14}/></div>
-                <div className="item-info">
-                  <h4 style={{ fontSize: '13px' }}>Priya completed Meditation</h4>
-                  <p style={{ fontSize: '11px' }}>4 hours ago</p>
-                </div>
-              </div>
-              <div className="side-widget-item">
-                <img src="https://ui-avatars.com/api/?name=Arjun" className="avatar" style={{ width: '32px', height: '32px' }} />
-                <div className="item-info">
-                  <h4 style={{ fontSize: '13px' }}>Arjun completed Running</h4>
-                  <p style={{ fontSize: '11px' }}>6 hours ago</p>
-                </div>
-              </div>
+              )) : (
+                <p className="text-muted">No check-ins yet today.</p>
+              )}
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Home, CheckCircle2, Share2, Sparkles, User, Bell, Share } from 'lucide-react';
 import './Sidebar.css';
 
