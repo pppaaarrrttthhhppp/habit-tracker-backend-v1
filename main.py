@@ -137,12 +137,21 @@ def connected_friend_ids(db: Session, user_id: int) -> list[int]:
     return [item.user_id_2 if item.user_id_1 == user_id else item.user_id_1 for item in friendships]
 
 
-def calculate_score(db: Session, user_a_id: int, user_b_id: int, habit_name: str) -> float:
-    habit_a = db.scalar(select(Habit).where(Habit.user_id == user_a_id, Habit.name == habit_name))
-    habit_b = db.scalar(select(Habit).where(Habit.user_id == user_b_id, Habit.name == habit_name))
+def calculate_association(db: Session, user_id: int, friend_id: int, habit_name: str) -> dict:
+    """
+    Directional temporal association: how often does `user_id`'s check-in for
+    `habit_name` land at or after `friend_id`'s check-in, within WINDOW (48h)?
+    This is association, not causation -- we only ever report observed timing.
+    Looks back 30 days for history so a habit's full check-in record is
+    considered; WINDOW itself (48h) is only used to decide whether two
+    individual check-ins count as a temporal match.
+    """
+    habit_a = db.scalar(select(Habit).where(Habit.user_id == user_id, Habit.name == habit_name))
+    habit_b = db.scalar(select(Habit).where(Habit.user_id == friend_id, Habit.name == habit_name))
     if not habit_a or not habit_b:
-        return 0.0
-    cutoff = datetime.utcnow() - WINDOW
+        return {"score": 0.0, "following_instances": 0, "observed_instances": 0}
+
+    cutoff = datetime.utcnow() - timedelta(days=30)
     times_a = db.scalars(select(HabitLog.completed_at).where(
         HabitLog.habit_id == habit_a.id, HabitLog.completed_at >= cutoff,
     )).all()
@@ -150,9 +159,20 @@ def calculate_score(db: Session, user_a_id: int, user_b_id: int, habit_name: str
         HabitLog.habit_id == habit_b.id, HabitLog.completed_at >= cutoff,
     )).all()
     if not times_a or not times_b:
-        return 0.0
-    pairs = sum(1 for time_a in times_a if any(abs(time_a - time_b) <= WINDOW for time_b in times_b))
-    return round(min(1.0, pairs / max(len(times_a), len(times_b))), 2)
+        return {"score": 0.0, "following_instances": 0, "observed_instances": len(times_a)}
+
+    following = sum(
+        1 for time_a in times_a
+        if any(timedelta(0) <= (time_a - time_b) <= WINDOW for time_b in times_b)
+    )
+    score = round(min(1.0, following / max(len(times_a), len(times_b))), 2)
+    return {"score": score, "following_instances": following, "observed_instances": len(times_a)}
+
+
+def calculate_score(db: Session, user_a_id: int, user_b_id: int, habit_name: str) -> float:
+    # Kept for any other internal caller; delegates to calculate_association
+    # so there is exactly one place the temporal-association math lives.
+    return calculate_association(db, user_a_id, user_b_id, habit_name)["score"]
 
 
 def influencer_rows(db: Session, user: User, limit: int, habit_filter: str | None = None) -> list[dict]:
@@ -167,6 +187,7 @@ def influencer_rows(db: Session, user: User, limit: int, habit_filter: str | Non
         if not friend:
             continue
         habit_scores: dict[str, float] = {}
+        habit_associations: dict[str, dict] = {}
         for name in unique_names:
             stored_score = db.scalar(select(ContagionScore.score).where(
                 ContagionScore.user_a_id == user.id,
@@ -174,15 +195,24 @@ def influencer_rows(db: Session, user: User, limit: int, habit_filter: str | Non
                 ContagionScore.habit_name == name,
             ))
             if stored_score is None:
-                habit_scores[name] = calculate_score(db, user.id, friend.id, name)
+                association = calculate_association(db, user.id, friend.id, name)
             else:
-                habit_scores[name] = float(stored_score)
+                association = {"score": float(stored_score), "following_instances": None, "observed_instances": None}
+            habit_scores[name] = association["score"]
+            habit_associations[name] = association
 
         if habit_scores:
             top_habit_name, best_score = max(habit_scores.items(), key=lambda pair: pair[1])
         else:
             top_habit_name, best_score = (habit_filter or "Running"), 0.0
 
+        if best_score <= 0:
+            # No genuine temporal association with this friend on any shared
+            # habit -- nothing to report, so no row (and therefore no edge
+            # in the network graph) for them.
+            continue
+
+        best_association = habit_associations.get(top_habit_name, {})
         friend_habits = db.scalars(select(Habit.name).where(Habit.user_id == friend.id)).all()
         shared_habits = [n for n in unique_names if n in set(friend_habits)]
 
@@ -192,8 +222,12 @@ def influencer_rows(db: Session, user: User, limit: int, habit_filter: str | Non
             "avatar_url": friend.avatar_url or f"https://ui-avatars.com/api/?name={friend.name}",
             "score": round(best_score, 2),
             "top_habit": top_habit_name,
+            "shared_habit": top_habit_name,
             "shared_habits": shared_habits,
             "habit_scores": habit_scores,
+            "observation_window_hours": int(WINDOW.total_seconds() // 3600),
+            "observed_instances": best_association.get("observed_instances"),
+            "following_instances": best_association.get("following_instances"),
         })
     return sorted(rows, key=lambda item: item["score"], reverse=True)[:limit]
 
