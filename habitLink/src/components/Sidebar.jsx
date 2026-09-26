@@ -2,17 +2,21 @@ import React from 'react';
 import { Home, CheckCircle2, Share2, Sparkles, User, Bell, Share } from 'lucide-react';
 import './Sidebar.css';
 
-const Sidebar = ({ activeTab, setActiveTab }) => {
-
-
+const Sidebar = ({ activeTab, setActiveTab, habitsBadge = '0/0', notificationsCount = 0 }) => {
   const navItems = [
     { name: 'Home', icon: Home },
-    { name: 'My Habits', icon: CheckCircle2, badge: '1/4' },
+    { name: 'My Habits', icon: CheckCircle2, badge: habitsBadge },
     { name: 'Network Graph', icon: Share2 },
     { name: 'Pairing Recommendations', icon: Sparkles, badge: 'NEW', badgeClass: 'new' },
     { name: 'Profile', icon: User },
-    { name: 'Notifications', icon: Bell, badge: '3', badgeClass: 'notification' },
+    {
+      name: 'Notifications',
+      icon: Bell,
+      badge: notificationsCount > 0 ? String(notificationsCount) : undefined,
+      badgeClass: 'notification',
+    },
   ];
+
 
   return (
     <aside className="sidebar">

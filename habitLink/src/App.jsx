@@ -20,10 +20,19 @@ const PAGES = {
 function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const ActivePage = PAGES[activeTab] || Dashboard;
+  const [sidebarStats, setSidebarStats] = useState({
+    habitsBadge: '0/0',
+    notificationsCount: 0,
+  });
 
   return (
     <div className="app-container">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        habitsBadge={sidebarStats.habitsBadge}
+        notificationsCount={sidebarStats.notificationsCount}
+      />
       <main className="main-content">
         <ActivePage onNavigate={setActiveTab} />
       </main>
@@ -32,3 +41,4 @@ function App() {
 }
 
 export default App;
+
