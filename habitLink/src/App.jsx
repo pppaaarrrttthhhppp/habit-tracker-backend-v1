@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import MyHabits from './pages/MyHabits';
@@ -6,6 +6,7 @@ import NetworkGraphPage from './pages/NetworkGraphPage';
 import PairingRecommendations from './pages/PairingRecommendations';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
+import { getHabits, getTodayCheckIns } from './api';
 import './App.css';
 
 const PAGES = {
@@ -25,6 +26,27 @@ function App() {
     notificationsCount: 0,
   });
 
+  const refreshSidebarStats = useCallback(async () => {
+    try {
+      const [habits, today] = await Promise.all([getHabits(), getTodayCheckIns()]);
+      const total = Array.isArray(habits) ? habits.length : 0;
+      const completed = Array.isArray(today?.habit_ids)
+        ? today.habit_ids.length
+        : Number(today?.completed || 0);
+      const remaining = Math.max(0, total - completed);
+      setSidebarStats({
+        habitsBadge: `${completed}/${total}`,
+        notificationsCount: remaining > 0 ? remaining : 0,
+      });
+    } catch {
+      // Keep last known badge stats if backend is temporarily unreachable
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSidebarStats();
+  }, [refreshSidebarStats, activeTab]);
+
   return (
     <div className="app-container">
       <Sidebar
@@ -34,11 +56,10 @@ function App() {
         notificationsCount={sidebarStats.notificationsCount}
       />
       <main className="main-content">
-        <ActivePage onNavigate={setActiveTab} />
+        <ActivePage onNavigate={setActiveTab} onStatsChange={refreshSidebarStats} />
       </main>
     </div>
   );
 }
 
 export default App;
-

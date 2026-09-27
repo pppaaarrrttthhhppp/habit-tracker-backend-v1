@@ -11,15 +11,16 @@
   box-shadow: var(--shadow-glass);
   display: flex;
   flex-direction: column;
-  padding: 32px 24px;
-  z-index: 10;
+  padding: 28px 20px;
+  z-index: 20;
+  overflow-y: auto;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 
 .logo-icon {
@@ -27,6 +28,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--border-glass);
+  flex-shrink: 0;
 }
 
 .logo-text h2 {
@@ -47,46 +54,52 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sidebar-nav li {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 11px 14px;
   border-radius: 12px;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
   border: 1px solid transparent;
+  min-width: 0;
 }
 
 .sidebar-nav li:hover {
   background: var(--bg-glass-hover);
   color: var(--text-primary);
-  transform: translateX(4px);
+  transform: translateX(3px);
 }
 
 .sidebar-nav li.active {
   background: var(--primary-light);
   color: var(--primary-color);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.22);
 }
 
 .sidebar-nav li span:nth-child(2) {
   flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badge {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.65);
   color: var(--text-secondary);
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .badge.new {
@@ -101,6 +114,7 @@
 
 .sidebar-footer {
   margin-top: auto;
+  padding-top: 20px;
 }
 
 .contagion-card {
@@ -108,7 +122,7 @@
   backdrop-filter: var(--blur-glass);
   border: 1px solid var(--border-glass);
   border-radius: 16px;
-  padding: 20px;
+  padding: 16px;
   box-shadow: var(--shadow-glass);
 }
 
@@ -116,7 +130,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .text-yellow {
@@ -124,7 +138,7 @@
 }
 
 .contagion-header h4 {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -132,19 +146,57 @@
 .contagion-card p {
   font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 16px;
+  line-height: 1.5;
+  margin-bottom: 12px;
   font-style: italic;
 }
 
 .contagion-badge {
-  background-color: rgba(255, 255, 255, 0.6);
+  background-color: rgba(255, 255, 255, 0.65);
   color: var(--primary-color);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border-radius: 8px;
   display: inline-block;
   width: 100%;
   text-align: center;
+}
+
+@media (max-width: 960px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: auto;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-glass);
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .sidebar-header {
+    margin-bottom: 0;
+  }
+
+  .sidebar-nav ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .sidebar-nav li {
+    padding: 8px 12px;
+    font-size: 12.5px;
+    gap: 8px;
+  }
+
+  .sidebar-nav li:hover {
+    transform: none;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
 }

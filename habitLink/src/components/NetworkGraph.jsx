@@ -59,7 +59,7 @@ const getStrengthLabel = (score) => {
   return 'Low';
 };
 
-const NetworkGraph = ({ height = 420, limit = 8 }) => {
+const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
   const svgRef = useRef(null);
 
   const [friends, setFriends] = useState([]);
@@ -82,7 +82,7 @@ const NetworkGraph = ({ height = 420, limit = 8 }) => {
     setLoading(true);
     setError('');
 
-    getInfluencers(limit)
+    getInfluencers(limit, habitFilter)
       .then((data) => {
         if (cancelled) return;
 
@@ -126,7 +126,7 @@ const NetworkGraph = ({ height = 420, limit = 8 }) => {
     return () => {
       cancelled = true;
     };
-  }, [limit]);
+  }, [limit, habitFilter]);
 
   const handlePointerMove = useCallback(
     (event) => {

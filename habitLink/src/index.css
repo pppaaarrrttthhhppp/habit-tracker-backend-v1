@@ -8,6 +8,7 @@
   --border-glass: rgba(255, 255, 255, 1);
   --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
   --blur-glass: blur(16px);
+  --border-color: rgba(148, 163, 184, 0.2);
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
@@ -22,13 +23,27 @@
   --warning-color: #f59e0b;
   --warning-light: rgba(245, 158, 11, 0.15);
   
-  --sidebar-width: 260px;
+  --sidebar-width: 256px;
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-width: 232px;
+  }
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {

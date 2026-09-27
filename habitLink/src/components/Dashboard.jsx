@@ -1,10 +1,39 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle, Users, Flame, Award, ChevronDown, Sparkles, ArrowRight, Brain, Clock, Plus } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  CheckCircle,
+  Users,
+  Flame,
+  Award,
+  ChevronDown,
+  Sparkles,
+  ArrowRight,
+  Brain,
+  Clock,
+  Plus,
+  Trash2,
+  Check,
+  Loader2,
+  X,
+} from 'lucide-react';
 import NetworkGraph from './NetworkGraph';
-import { getUserStats, getHabits, getTodayCheckIns, getInfluencers, getPairingRecommendation, logHabitCheckIn } from '../api';
+import {
+  HabitIconBadge,
+  AddHabitModal,
+  DeleteHabitModal,
+} from './HabitModals';
+import {
+  getUserStats,
+  getHabits,
+  getTodayCheckIns,
+  getInfluencers,
+  getPairingRecommendation,
+  toggleHabitCheckIn,
+  createHabit,
+  deleteHabit,
+} from '../api';
 import './Dashboard.css';
 
-const Dashboard = ({ onNavigate }) => {
+const Dashboard = ({ onNavigate, onStatsChange }) => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [habits, setHabits] = useState([]);
@@ -13,8 +42,34 @@ const Dashboard = ({ onNavigate }) => {
   const [pairing, setPairing] = useState(null);
   const [error, setError] = useState('');
 
-  const loadDashboard = async () => {
+  // Network graph habit filter
+  const [networkHabitFilter, setNetworkHabitFilter] = useState('all');
+
+  // Add / Remove / Toggle Habit states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmittingHabit, setIsSubmittingHabit] = useState(false);
+  const [addModalError, setAddModalError] = useState('');
+
+  const [habitToDelete, setHabitToDelete] = useState(null);
+  const [isDeletingHabit, setIsDeletingHabit] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState('');
+
+  const [togglingHabitId, setTogglingHabitId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const showFeedback = useCallback((type, message) => {
+    setFeedback({ type, message });
+  }, []);
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+    const timer = setTimeout(() => setFeedback(null), 4500);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+
+  const loadDashboard = useCallback(async () => {
     try {
+      setError('');
       const [statsData, habitsData, checkInsData, influencersData, pairingData] = await Promise.all([
         getUserStats(),
         getHabits(),
@@ -28,23 +83,66 @@ const Dashboard = ({ onNavigate }) => {
       setTodayCheckIns(checkInsData);
       setInfluencers(influencersData);
       setPairing(pairingData);
+      onStatsChange?.();
     } catch (loadError) {
       setError(loadError.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [onStatsChange]);
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
-  const logHabit = async (habitId) => {
+  const handleToggleHabit = async (habitId) => {
+    if (togglingHabitId === habitId) return;
+    setTogglingHabitId(habitId);
     try {
-      await logHabitCheckIn(habitId);
+      const result = await toggleHabitCheckIn(habitId);
       await loadDashboard();
+      const statusText = result?.completed_today
+        ? `Checked in for "${result.habit_name || 'habit'}"!`
+        : `Check-in removed for "${result?.habit_name || 'habit'}".`;
+      showFeedback('success', statusText);
     } catch (logError) {
-      setError(logError.message);
+      showFeedback('error', logError.message);
+    } finally {
+      setTogglingHabitId(null);
+    }
+  };
+
+  const handleCreateHabit = async (payload) => {
+    setIsSubmittingHabit(true);
+    setAddModalError('');
+    try {
+      const created = await createHabit(payload);
+      setIsAddModalOpen(false);
+      await loadDashboard();
+      showFeedback('success', `Habit "${created.name}" added successfully!`);
+    } catch (createError) {
+      setAddModalError(createError.message || 'Failed to create habit.');
+    } finally {
+      setIsSubmittingHabit(false);
+    }
+  };
+
+  const handleConfirmDeleteHabit = async (habit) => {
+    if (!habit) return;
+    setIsDeletingHabit(true);
+    setDeleteModalError('');
+    try {
+      await deleteHabit(habit.id);
+      setHabitToDelete(null);
+      if (networkHabitFilter.toLowerCase() === (habit.name || '').toLowerCase()) {
+        setNetworkHabitFilter('all');
+      }
+      await loadDashboard();
+      showFeedback('success', `Habit "${habit.name || habit.title}" was removed.`);
+    } catch (delError) {
+      setDeleteModalError(delError.message || 'Failed to delete habit.');
+    } finally {
+      setIsDeletingHabit(false);
     }
   };
 
@@ -52,38 +150,55 @@ const Dashboard = ({ onNavigate }) => {
   const topInfluencer = influencers[0];
   const recommendation = pairing?.recommendation;
 
-  // Recent activity is built from data the app already has (which habits
-  // were checked in today) rather than a separate activity-feed endpoint,
-  // since the backend doesn't expose one.
-  const checkedInHabits = habits.filter((habit) => todayCheckIns.habit_ids?.includes(habit.id));
+  const checkedInHabits = habits.filter(
+    (habit) => habit.completed_today || todayCheckIns.habit_ids?.includes(habit.id)
+  );
+  const completedCount =
+    todayCheckIns.habit_ids !== undefined
+      ? todayCheckIns.habit_ids.length
+      : quickStats.today_check_ins ?? todayCheckIns.completed ?? 0;
 
   return (
     <div className="dashboard">
-      <header className="dashboard-header" style={{ marginBottom: '32px' }}>
+      <header className="dashboard-header">
         <div className="greeting">
-          <h1>Good evening, Pallavi!</h1>
-          <p>{loading ? 'Syncing your data…' : "Your habits are more powerful when shared. Let's build a healthier you, together."}</p>
+          <h1>Good evening, {stats?.display_name || 'Pallavi'}!</h1>
+          <p>
+            {loading
+              ? 'Syncing your data…'
+              : "Your habits are more powerful when shared. Let's build a healthier you, together."}
+          </p>
         </div>
         <div className="header-actions">
-          <div
-            className="icon-wrapper"
-            style={{ width: '40px', height: '40px', background: 'var(--bg-glass)', borderRadius: '50%', cursor: 'pointer', border: '1px solid var(--border-glass)' }}
+          <button
+            type="button"
+            className="icon-wrapper header-notif-btn"
             onClick={() => onNavigate?.('Notifications')}
-            role="button"
-            tabIndex={0}
+            aria-label="Notifications"
           >
-            <span style={{ position: 'relative' }}>
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
               🔔
-              <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', background: 'red', borderRadius: '50%' }}></span>
+              <span className="notif-dot" />
             </span>
-          </div>
-          <div className="user-profile" style={{ background: 'var(--bg-glass)', padding: '6px 16px 6px 6px', borderRadius: '30px', border: '1px solid var(--border-glass)', cursor: 'pointer' }}>
-            <img src="https://ui-avatars.com/api/?name=Pallavi&background=c7d2fe&color=3730a3" alt="Pallavi" className="avatar" style={{ width: '32px', height: '32px', border: 'none' }} />
+          </button>
+          <button
+            type="button"
+            className="user-profile"
+            onClick={() => onNavigate?.('Profile')}
+          >
+            <img
+              src="https://ui-avatars.com/api/?name=Pallavi&background=c7d2fe&color=3730a3"
+              alt="Pallavi"
+              className="avatar"
+              style={{ width: '32px', height: '32px', border: 'none' }}
+            />
             <div className="user-info">
-              <span className="user-name" style={{ fontSize: '13px' }}>Pallavi</span>
+              <span className="user-name" style={{ fontSize: '13px' }}>
+                {stats?.display_name || 'Pallavi'}
+              </span>
             </div>
-            <ChevronDown size={14} style={{ marginLeft: '8px', color: 'var(--text-secondary)' }} />
-          </div>
+            <ChevronDown size={14} style={{ marginLeft: '4px', color: 'var(--text-secondary)' }} />
+          </button>
         </div>
       </header>
 
@@ -96,10 +211,10 @@ const Dashboard = ({ onNavigate }) => {
               <CheckCircle size={20} />
             </div>
           </div>
-          <div className="stat-value">{quickStats.today_check_ins || todayCheckIns.completed}/{habits.length}</div>
-          <div className="stat-footer success-text">
-            ↗ Keep going!
+          <div className="stat-value">
+            {completedCount}/{habits.length}
           </div>
+          <div className="stat-footer success-text">↗ Keep going!</div>
         </div>
 
         <div className="glass-card stat-card">
@@ -109,10 +224,8 @@ const Dashboard = ({ onNavigate }) => {
               <Users size={20} />
             </div>
           </div>
-          <div className="stat-value">{quickStats.friends_count || 0}</div>
-          <div className="stat-footer text-muted">
-            More connections, more impact!
-          </div>
+          <div className="stat-value">{quickStats.friends_count ?? stats?.total_friends ?? 0}</div>
+          <div className="stat-footer text-muted">More connections, more impact!</div>
         </div>
 
         <div className="glass-card stat-card">
@@ -122,9 +235,9 @@ const Dashboard = ({ onNavigate }) => {
               <Flame size={20} />
             </div>
           </div>
-          <div className="stat-value">{quickStats.active_habits || habits.length}</div>
+          <div className="stat-value">{habits.length}</div>
           <div className="stat-footer success-text">
-            ↑ +1 from last week
+            {habits.length > 0 ? `${completedCount} completed today` : 'Add your first habit'}
           </div>
         </div>
 
@@ -137,7 +250,7 @@ const Dashboard = ({ onNavigate }) => {
           </div>
           <div className="stat-value text-lg">{topInfluencer?.name || 'None yet'}</div>
           <div className="stat-footer text-muted">
-            (Running)
+            ({topInfluencer?.top_habit || 'Running'})
           </div>
         </div>
       </section>
@@ -145,8 +258,7 @@ const Dashboard = ({ onNavigate }) => {
       {/* Main Content Area */}
       <section className="main-widgets">
         {/* Left Column */}
-        <div className="left-column" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
+        <div className="left-column">
           <div className="glass-card widget-card">
             <div className="widget-header">
               <div className="widget-title">
@@ -154,100 +266,266 @@ const Dashboard = ({ onNavigate }) => {
                 <p>See how your habits spread through your friend circle</p>
               </div>
               <div className="widget-controls">
-                <button className="btn-filter">
-                  All Habits <ChevronDown size={16} />
-                </button>
+                <div className="select-filter-wrapper">
+                  <select
+                    className="btn-filter-select"
+                    value={networkHabitFilter}
+                    onChange={(e) => setNetworkHabitFilter(e.target.value)}
+                    aria-label="Filter network by habit"
+                  >
+                    <option value="all">All Habits</option>
+                    {habits.map((h) => (
+                      <option key={h.id} value={h.name}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} className="select-chevron" />
+                </div>
               </div>
             </div>
-            
-            <NetworkGraph height={340} />
+
+            <NetworkGraph height={340} habitFilter={networkHabitFilter} />
           </div>
 
           <div className="glass-card widget-card">
             <div className="section-header">
-              <h3>Your Habits</h3>
-              <span className="view-all" onClick={() => onNavigate?.('My Habits')}>View All</span>
-            </div>
-            <div className="habits-list">
-              {habits.map(habit => (
-                <button className="habit-card" key={habit.id} onClick={() => logHabit(habit.id)} type="button">
-                  <div className="habit-icon" style={{ background: '#e0f2fe', color: habit.color }}>✓</div>
-                  <div>
-                    <h4>{habit.title}</h4>
-                    <p>{habit.completed}/{habit.target_days} days</p>
-                  </div>
-                  <div className="progress-bar"><div className="progress-fill" style={{ width: `${habit.progress}%`, background: habit.color }}></div></div>
+              <div>
+                <h3>Your Habits</h3>
+                <span className="section-subtitle">
+                  Click a habit to check in for today, or add and manage your routines
+                </span>
+              </div>
+              <div className="section-header-actions">
+                <button
+                  type="button"
+                  className="btn-add-inline"
+                  onClick={() => {
+                    setAddModalError('');
+                    setIsAddModalOpen(true);
+                  }}
+                >
+                  <Plus size={15} />
+                  Add Habit
                 </button>
-              ))}
-              <div className="habit-card" style={{ justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', cursor: 'pointer' }}>
-                <Plus size={24} color="#94a3b8" />
-                <h4 style={{ color: '#64748b', marginTop: '8px' }}>Add Habit</h4>
+                <button
+                  type="button"
+                  className="view-all"
+                  onClick={() => onNavigate?.('My Habits')}
+                >
+                  View All
+                </button>
               </div>
             </div>
-            {error && <p className="text-muted" role="alert">{error}. Start the FastAPI server on port 8000.</p>}
+
+            {feedback && (
+              <div className={`alert-banner ${feedback.type}`} role="status">
+                <span>{feedback.message}</span>
+                <button
+                  type="button"
+                  className="alert-dismiss-btn"
+                  onClick={() => setFeedback(null)}
+                  aria-label="Dismiss message"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+
+            <div className="habits-list">
+              {habits.map((habit) => {
+                const isDoneToday =
+                  habit.completed_today || todayCheckIns.habit_ids?.includes(habit.id);
+                const isToggling = togglingHabitId === habit.id;
+
+                return (
+                  <div
+                    className={`habit-card ${isDoneToday ? 'completed-today' : ''}`}
+                    key={habit.id}
+                  >
+                    <div className="habit-card-top">
+                      <HabitIconBadge icon={habit.icon} color={habit.color} size={17} />
+                      <div className="habit-card-meta">
+                        <span className="habit-freq-tag">
+                          {habit.frequency === 'weekly' ? 'Weekly' : 'Daily'}
+                        </span>
+                        <button
+                          type="button"
+                          className="habit-action-btn delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteModalError('');
+                            setHabitToDelete(habit);
+                          }}
+                          title={`Remove ${habit.title || habit.name}`}
+                          aria-label={`Remove ${habit.title || habit.name}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="habit-card-body">
+                      <h4 title={habit.title || habit.name}>{habit.title || habit.name}</h4>
+                      <p>
+                        {habit.completed}/{habit.target_days} days · {habit.progress}%
+                      </p>
+                    </div>
+
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${habit.progress}%`,
+                          background: habit.color || 'var(--primary-color)',
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`habit-toggle-btn ${isDoneToday ? 'done' : ''}`}
+                      onClick={() => handleToggleHabit(habit.id)}
+                      disabled={isToggling}
+                    >
+                      {isToggling ? (
+                        <>
+                          <Loader2 size={13} className="spin-icon" />
+                          Saving…
+                        </>
+                      ) : isDoneToday ? (
+                        <>
+                          <Check size={13} strokeWidth={2.6} />
+                          Done Today
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={13} />
+                          Check In
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                className="habit-card add-habit-card"
+                onClick={() => {
+                  setAddModalError('');
+                  setIsAddModalOpen(true);
+                }}
+              >
+                <div className="add-habit-icon-circle">
+                  <Plus size={22} />
+                </div>
+                <h4>Add Habit</h4>
+                <p>Create a new routine</p>
+              </button>
+            </div>
+
+            {error && (
+              <p className="text-muted" role="alert" style={{ marginTop: '12px' }}>
+                {error}. Start the FastAPI server on port 8000.
+              </p>
+            )}
           </div>
 
-          <div className="ai-promo-banner glass-card" style={{ padding: '24px' }}>
+          <div className="ai-promo-banner glass-card">
             <div className="promo-content">
               <div className="promo-icon">
                 <Brain size={24} />
               </div>
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e1b4b', marginBottom: '4px' }}>Let AI find your perfect habit partners!</h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Get personalized recommendations based on your goals, habits and friend network.</p>
+                <h3>Let AI find your perfect habit partners!</h3>
+                <p>
+                  Get personalized recommendations based on your goals, habits and friend network.
+                </p>
               </div>
             </div>
-            <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => onNavigate?.('Pairing Recommendations')} type="button">
+            <button
+              className="btn-primary promo-action-btn"
+              onClick={() => onNavigate?.('Pairing Recommendations')}
+              type="button"
+            >
               Get Recommendations <ArrowRight size={16} />
             </button>
           </div>
         </div>
 
         {/* Right Column */}
-        <div className="right-column" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
+        <div className="right-column">
           <div className="glass-card widget-card">
             <div className="section-header">
-              <h3><Sparkles size={18} color="#6366f1" /> AI Pairing Recommendation</h3>
-              <span className="view-all" onClick={() => onNavigate?.('Pairing Recommendations')}>View All</span>
+              <h3>
+                <Sparkles size={18} color="#6366f1" /> AI Pairing Recommendation
+              </h3>
+              <button
+                type="button"
+                className="view-all"
+                onClick={() => onNavigate?.('Pairing Recommendations')}
+              >
+                View All
+              </button>
             </div>
-            
+
             {recommendation ? (
-              <div style={{ background: 'rgba(255,255,255,0.5)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.8)' }}>
-                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(recommendation.name)}&background=c7d2fe&color=3730a3`} className="avatar" style={{ width: '48px', height: '48px', borderRadius: '12px' }} />
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <h4 style={{ fontSize: '15px', fontWeight: '800', color: '#1e1b4b' }}>Pair with {recommendation.name}</h4>
-                      <span style={{ fontSize: '10px', background: '#d1fae5', color: '#059669', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>{Math.round(recommendation.pairing_score * 100)}% match</span>
+              <div className="recommendation-inner-card">
+                <div className="recommendation-top">
+                  <img
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(recommendation.name)}&background=c7d2fe&color=3730a3`}
+                    alt={recommendation.name}
+                    className="avatar recommendation-avatar"
+                  />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="recommendation-name-row">
+                      <h4>Pair with {recommendation.name}</h4>
+                      <span className="match-pill">
+                        {Math.round(recommendation.pairing_score * 100)}% match
+                      </span>
                     </div>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                      {recommendation.explanation}
-                    </p>
+                    <p className="recommendation-desc">{recommendation.explanation}</p>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-                  <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Influence Score<br/><span style={{color:'#1e1b4b'}}>{Number(recommendation.score).toFixed(2)}</span></div>
-                  <div style={{ background: 'rgba(255,255,255,0.7)', padding: '8px', borderRadius: '8px', fontSize: '11px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>Pairing Score<br/><span style={{color:'#1e1b4b'}}>{Number(recommendation.pairing_score).toFixed(2)}</span></div>
+                <div className="recommendation-scores-grid">
+                  <div className="recommendation-score-box">
+                    Influence Score
+                    <br />
+                    <span>{Number(recommendation.score).toFixed(2)}</span>
+                  </div>
+                  <div className="recommendation-score-box">
+                    Pairing Score
+                    <br />
+                    <span>{Number(recommendation.pairing_score).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             ) : (
-              <p className="text-muted">{pairing?.message || 'Connect with a friend to receive a pairing recommendation.'}</p>
+              <p className="text-muted">
+                {pairing?.message || 'Connect with a friend to receive a pairing recommendation.'}
+              </p>
             )}
           </div>
 
           <div className="glass-card widget-card">
             <div className="section-header">
-              <h3><Users size={18} color="#6366f1" /> Top Influencers for Your Habits</h3>
+              <h3>
+                <Users size={18} color="#6366f1" /> Top Influencers for Your Habits
+              </h3>
             </div>
             <div className="side-widgets">
               {influencers.map((influencer, index) => (
                 <div className="side-widget-item" key={influencer.id}>
-                  <span style={{ fontWeight: '800', color: '#94a3b8', width: '16px' }}>{index + 1}</span>
-                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(influencer.name)}`} className="avatar" />
+                  <span className="influencer-rank">{index + 1}</span>
+                  <img
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(influencer.name)}`}
+                    alt={influencer.name}
+                    className="avatar"
+                  />
                   <div className="item-info">
                     <h4>{influencer.name}</h4>
-                    <p>Habit influence</p>
+                    <p>{influencer.top_habit || 'Habit influence'}</p>
                   </div>
                   <div className="item-score">{Number(influencer.score).toFixed(2)}</div>
                 </div>
@@ -258,25 +536,49 @@ const Dashboard = ({ onNavigate }) => {
 
           <div className="glass-card widget-card">
             <div className="section-header">
-              <h3><Clock size={18} color="#6366f1" /> Recent Activity</h3>
+              <h3>
+                <Clock size={18} color="#6366f1" /> Recent Activity
+              </h3>
             </div>
             <div className="side-widgets">
-              {checkedInHabits.length ? checkedInHabits.map((habit) => (
-                <div className="side-widget-item" key={habit.id}>
-                  <div className="icon-wrapper success" style={{ width: '32px', height: '32px' }}><CheckCircle size={14}/></div>
-                  <div className="item-info">
-                    <h4 style={{ fontSize: '13px' }}>You completed {habit.name}</h4>
-                    <p style={{ fontSize: '11px' }}>Today</p>
+              {checkedInHabits.length ? (
+                checkedInHabits.map((habit) => (
+                  <div className="side-widget-item" key={habit.id}>
+                    <div
+                      className="icon-wrapper success"
+                      style={{ width: '32px', height: '32px', flexShrink: 0 }}
+                    >
+                      <CheckCircle size={14} />
+                    </div>
+                    <div className="item-info">
+                      <h4 style={{ fontSize: '13px' }}>You completed {habit.name}</h4>
+                      <p style={{ fontSize: '11px' }}>Today</p>
+                    </div>
                   </div>
-                </div>
-              )) : (
+                ))
+              ) : (
                 <p className="text-muted">No check-ins yet today.</p>
               )}
             </div>
           </div>
-
         </div>
       </section>
+
+      <AddHabitModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleCreateHabit}
+        isSubmitting={isSubmittingHabit}
+        apiError={addModalError}
+      />
+
+      <DeleteHabitModal
+        habit={habitToDelete}
+        onClose={() => setHabitToDelete(null)}
+        onConfirm={handleConfirmDeleteHabit}
+        isDeleting={isDeletingHabit}
+        apiError={deleteModalError}
+      />
     </div>
   );
 };

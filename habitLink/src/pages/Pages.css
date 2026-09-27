@@ -2,8 +2,18 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 100%;
   max-width: 1400px;
+  min-width: 0;
   margin: 0 auto;
+}
+
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .page-header h1 {
@@ -27,8 +37,10 @@
 /* My Habits page */
 .habits-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 20px;
+  width: 100%;
+  min-width: 0;
 }
 
 .habit-tile {
@@ -107,11 +119,18 @@
 
 .habit-checkin-btn.done {
   background: var(--success-light);
-  color: var(--success-color);
-  cursor: default;
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  cursor: pointer;
 }
 
-.habit-checkin-btn:hover.active {
+.habit-checkin-btn.done:hover:not(:disabled) {
+  background: #10b981;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.habit-checkin-btn:hover.active:not(:disabled) {
   transform: translateY(-2px);
 }
 
