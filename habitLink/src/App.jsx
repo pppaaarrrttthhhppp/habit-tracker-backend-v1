@@ -6,6 +6,7 @@ import NetworkGraphPage from './pages/NetworkGraphPage';
 import PairingRecommendations from './pages/PairingRecommendations';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
+import { ToastProvider } from './components/Toast';
 import { getHabits, getTodayCheckIns } from './api';
 import './App.css';
 
@@ -48,17 +49,19 @@ function App() {
   }, [refreshSidebarStats, activeTab]);
 
   return (
-    <div className="app-container">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        habitsBadge={sidebarStats.habitsBadge}
-        notificationsCount={sidebarStats.notificationsCount}
-      />
-      <main className="main-content">
-        <ActivePage onNavigate={setActiveTab} onStatsChange={refreshSidebarStats} />
-      </main>
-    </div>
+    <ToastProvider>
+      <div className="app-container">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          habitsBadge={sidebarStats.habitsBadge}
+          notificationsCount={sidebarStats.notificationsCount}
+        />
+        <main className="main-content" id="main-content" tabIndex={-1}>
+          <ActivePage onNavigate={setActiveTab} onStatsChange={refreshSidebarStats} />
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
 

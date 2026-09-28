@@ -13,7 +13,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .network-graph-title {
@@ -23,42 +23,84 @@
   min-width: 0;
 }
 
+.network-graph-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .network-graph-title span {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 800;
   color: #1e1b4b;
 }
 
+.network-count-pill {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #4f46e5 !important;
+  background: rgba(99, 102, 241, 0.14);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
 .network-graph-title small {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--text-secondary);
   font-weight: 500;
 }
 
 .zoom-controls {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border-glass);
+  padding: 4px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(30, 27, 75, 0.04);
+}
+
+.zoom-readout {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #312e81;
+  min-width: 42px;
+  text-align: center;
+  user-select: none;
 }
 
 .zoom-controls button {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-glass);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: #3730a3;
   cursor: pointer;
   transition:
     transform 0.15s ease,
-    background 0.15s ease;
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.zoom-controls button:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.95);
+.zoom-controls button:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.14);
+  color: #312e81;
+}
+
+.zoom-controls button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+.zoom-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .network-graph-canvas {
@@ -67,26 +109,27 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: 300px;
+  min-height: 310px;
   background:
     radial-gradient(
       circle at center,
-      rgba(99, 102, 241, 0.06),
-      transparent 48%
+      rgba(99, 102, 241, 0.09),
+      rgba(168, 85, 247, 0.03) 48%,
+      transparent 72%
     ),
-    rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+    rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.network-graph-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80%;
-  text-align: center;
+.network-graph-state-wrap {
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
 }
 
 .network-graph-svg {
@@ -103,29 +146,53 @@
   cursor: grabbing;
 }
 
+.network-orbit-ring {
+  fill: none;
+  stroke: rgba(99, 102, 241, 0.13);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 6;
+  pointer-events: none;
+}
+
+.network-orbit-ring.outer {
+  stroke: rgba(148, 163, 184, 0.18);
+}
+
+.network-edge-group {
+  transition: opacity 0.22s ease;
+}
+
+.network-edge-group.dimmed {
+  opacity: 0.45;
+}
+
 .network-node {
   cursor: grab;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+  outline: none;
+}
+
+.network-node:focus-visible circle:nth-of-type(2) {
+  stroke: #1e1b4b;
+  stroke-width: 4.5px;
 }
 
 .network-node:hover {
-  opacity: 0.96;
+  opacity: 1;
 }
 
-.network-node:active {
-  cursor: grabbing;
-}
-
+.network-node:active,
 .network-node.selected {
   cursor: grabbing;
 }
 
 .network-node-glow {
   pointer-events: none;
+  transition: r 0.2s ease, opacity 0.2s ease;
 }
 
 .network-node-label {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 800;
   fill: #ffffff;
   pointer-events: none;
@@ -133,18 +200,18 @@
 }
 
 .network-node-label.you {
-  font-size: 17px;
+  font-size: 16.5px;
 }
 
 .network-center-subtitle {
   font-size: 11px;
   font-weight: 600;
-  fill: rgba(255, 255, 255, 0.82);
+  fill: rgba(255, 255, 255, 0.88);
   pointer-events: none;
 }
 
 .network-friend-name {
-  font-size: 15px;
+  font-size: 13.5px;
   font-weight: 800;
   fill: #1e1b4b;
   pointer-events: none;
@@ -153,12 +220,12 @@
 .network-friend-habit {
   font-size: 11px;
   font-weight: 600;
-  fill: #64748b;
+  fill: #475569;
   pointer-events: none;
 }
 
 .network-friend-score {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   pointer-events: none;
 }
@@ -166,11 +233,6 @@
 .network-edge-label {
   font-size: 11px;
   font-weight: 800;
-  fill: #475569;
-  paint-order: stroke;
-  stroke: rgba(255, 255, 255, 0.92);
-  stroke-width: 4px;
-  stroke-linejoin: round;
   pointer-events: none;
 }
 
@@ -178,47 +240,79 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
   margin-top: 12px;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid var(--border-glass);
-  border-radius: 14px;
-  box-shadow: 0 8px 24px rgba(30, 27, 75, 0.07);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 15px;
+  box-shadow: 0 10px 28px rgba(30, 27, 75, 0.08);
+  animation: modalFadeIn 0.2s ease;
 }
 
 .network-tooltip-main {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
+  flex: 1;
 }
 
 .network-tooltip-avatar {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.network-tooltip-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.network-tooltip-header-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
 .network-graph-tooltip h4 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 15px;
   font-weight: 800;
   color: #1e1b4b;
 }
 
+.network-strength-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
 .network-graph-tooltip p {
   margin: 3px 0;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+.network-tooltip-evidence {
+  margin-top: 5px !important;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
 }
 
 .network-graph-tooltip strong {
@@ -232,11 +326,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(241, 245, 249, 0.8);
-  border: none;
+  background: rgba(241, 245, 249, 0.9);
+  border: 1px solid transparent;
   border-radius: 8px;
   color: var(--text-secondary);
   cursor: pointer;
+  transition: all 0.16s ease;
 }
 
 .network-graph-tooltip-close:hover {
@@ -249,15 +344,17 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
-  margin-top: 10px;
-  padding: 0 2px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.48);
+  border-radius: 10px;
 }
 
 .legend-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -278,10 +375,6 @@
 @media (max-width: 760px) {
   .network-graph-controls {
     align-items: flex-start;
-  }
-
-  .network-graph-title small {
-    max-width: 240px;
   }
 
   .network-legend-hint {

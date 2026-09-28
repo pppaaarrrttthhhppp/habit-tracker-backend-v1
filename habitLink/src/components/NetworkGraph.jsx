@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, X, Share2, Sparkles } from 'lucide-react';
 import { getInfluencers } from '../api';
+import { SkeletonGraphLoader, EmptyState } from './UIComponents';
 import './NetworkGraph.css';
 
 const VIEW_W = 1000;
@@ -11,8 +12,8 @@ const CENTER = {
   y: VIEW_H / 2,
 };
 
-const RADIUS_X = 365;
-const RADIUS_Y = 235;
+const RADIUS_X = 360;
+const RADIUS_Y = 225;
 
 const MIN_ZOOM = 0.65;
 const MAX_ZOOM = 1.8;
@@ -24,6 +25,7 @@ const scoreColor = (score) => {
       fill: '#6366f1',
       ring: '#4338ca',
       soft: 'rgba(99, 102, 241, 0.18)',
+      badgeBg: '#eef2ff',
     };
   }
 
@@ -32,6 +34,7 @@ const scoreColor = (score) => {
       fill: '#a855f7',
       ring: '#7e22ce',
       soft: 'rgba(168, 85, 247, 0.18)',
+      badgeBg: '#faf5ff',
     };
   }
 
@@ -39,11 +42,12 @@ const scoreColor = (score) => {
     fill: '#64748b',
     ring: '#475569',
     soft: 'rgba(100, 116, 139, 0.18)',
+    badgeBg: '#f1f5f9',
   };
 };
 
 const initials = (name) =>
-  name
+  (name || '')
     .split(' ')
     .map((part) => part[0])
     .join('')
@@ -59,7 +63,25 @@ const getStrengthLabel = (score) => {
   return 'Low';
 };
 
-const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
+const computeDefaultNodes = (visibleFriends) => {
+  const placed = {};
+  visibleFriends.forEach((friend, index) => {
+    const angle =
+      (index / Math.max(visibleFriends.length, 1)) * Math.PI * 2 - Math.PI / 2;
+    placed[friend.id] = {
+      x: CENTER.x + RADIUS_X * Math.cos(angle),
+      y: CENTER.y + RADIUS_Y * Math.sin(angle),
+    };
+  });
+  return placed;
+};
+
+const NetworkGraph = ({
+  height = 420,
+  limit = 8,
+  habitFilter = 'all',
+  onResetFilter,
+}) => {
   const svgRef = useRef(null);
 
   const [friends, setFriends] = useState([]);
@@ -68,6 +90,7 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
+  const [hoveredId, setHoveredId] = useState(null);
 
   const dragState = useRef({
     id: null,
@@ -87,30 +110,11 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
         if (cancelled) return;
 
         const visibleFriends = Array.isArray(data) ? data : [];
-
         setFriends(visibleFriends);
-
-        const placed = {};
-
-        visibleFriends.forEach((friend, index) => {
-          /*
-           * Start at the top and distribute friends around an ellipse.
-           * The wider horizontal radius gives names and habit labels
-           * enough room without clipping.
-           */
-          const angle =
-            (index / Math.max(visibleFriends.length, 1)) *
-              Math.PI *
-              2 -
-            Math.PI / 2;
-
-          placed[friend.id] = {
-            x: CENTER.x + RADIUS_X * Math.cos(angle),
-            y: CENTER.y + RADIUS_Y * Math.sin(angle),
-          };
-        });
-
-        setNodes(placed);
+        setNodes(computeDefaultNodes(visibleFriends));
+        setSelectedId((prev) =>
+          visibleFriends.some((f) => f.id === prev) ? prev : null
+        );
       })
       .catch((err) => {
         if (!cancelled) {
@@ -128,35 +132,56 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
     };
   }, [limit, habitFilter]);
 
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId]);
+
   const handlePointerMove = useCallback(
     (event) => {
       const drag = dragState.current;
-
       if (!drag.id || !svgRef.current) return;
 
+      const clientX =
+        event.touches && event.touches.length > 0
+          ? event.touches[0].clientX
+          : event.clientX;
+      const clientY =
+        event.touches && event.touches.length > 0
+          ? event.touches[0].clientY
+          : event.clientY;
+
       const rect = svgRef.current.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
 
       const scaleX = VIEW_W / rect.width;
       const scaleY = VIEW_H / rect.height;
 
-      const dx = (event.clientX - drag.lastX) * scaleX;
-      const dy = (event.clientY - drag.lastY) * scaleY;
+      const dx = (clientX - drag.lastX) * scaleX;
+      const dy = (clientY - drag.lastY) * scaleY;
 
       drag.moved += Math.abs(dx) + Math.abs(dy);
-
-      drag.lastX = event.clientX;
-      drag.lastY = event.clientY;
+      drag.lastX = clientX;
+      drag.lastY = clientY;
 
       setNodes((prev) => {
         const current = prev[drag.id];
-
         if (!current) return prev;
+
+        const nextX = Math.max(85, Math.min(VIEW_W - 85, current.x + dx / zoom));
+        const nextY = Math.max(65, Math.min(VIEW_H - 115, current.y + dy / zoom));
 
         return {
           ...prev,
           [drag.id]: {
-            x: current.x + dx / zoom,
-            y: current.y + dy / zoom,
+            x: nextX,
+            y: nextY,
           },
         };
       });
@@ -170,9 +195,7 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
     const drag = dragState.current;
 
     if (drag.id && drag.moved < DRAG_THRESHOLD) {
-      setSelectedId((prev) =>
-        prev === drag.id ? null : drag.id
-      );
+      setSelectedId((prev) => (prev === drag.id ? null : drag.id));
     }
 
     dragState.current = {
@@ -182,15 +205,10 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
       moved: 0,
     };
 
-    window.removeEventListener(
-      'mousemove',
-      handlePointerMove
-    );
-
-    window.removeEventListener(
-      'mouseup',
-      handlePointerUpRef.current
-    );
+    window.removeEventListener('mousemove', handlePointerMove);
+    window.removeEventListener('mouseup', handlePointerUpRef.current);
+    window.removeEventListener('touchmove', handlePointerMove);
+    window.removeEventListener('touchend', handlePointerUpRef.current);
   }, [handlePointerMove]);
 
   useEffect(() => {
@@ -198,324 +216,440 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
   }, [handlePointerUp]);
 
   const startDrag = (event, id) => {
-    event.preventDefault();
+    const isTouch = event.type === 'touchstart';
+    if (!isTouch) {
+      event.preventDefault();
+    }
+
+    const clientX = isTouch ? event.touches[0].clientX : event.clientX;
+    const clientY = isTouch ? event.touches[0].clientY : event.clientY;
 
     dragState.current = {
       id,
-      lastX: event.clientX,
-      lastY: event.clientY,
+      lastX: clientX,
+      lastY: clientY,
       moved: 0,
     };
 
-    window.addEventListener(
-      'mousemove',
-      handlePointerMove
-    );
-
-    window.addEventListener(
-      'mouseup',
-      handlePointerUpRef.current
-    );
+    if (isTouch) {
+      window.addEventListener('touchmove', handlePointerMove, { passive: false });
+      window.addEventListener('touchend', handlePointerUpRef.current);
+    } else {
+      window.addEventListener('mousemove', handlePointerMove);
+      window.addEventListener('mouseup', handlePointerUpRef.current);
+    }
   };
 
   const handleWheel = (event) => {
     event.preventDefault();
-
     const direction = event.deltaY > 0 ? -1 : 1;
-
     setZoom((prev) =>
-      Math.min(
-        MAX_ZOOM,
-        Math.max(
-          MIN_ZOOM,
-          +(prev + direction * 0.1).toFixed(2)
-        )
-      )
+      Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + direction * 0.1).toFixed(2)))
     );
   };
 
-  const selectedFriend = friends.find(
-    (friend) => friend.id === selectedId
-  );
+  const handleResetView = () => {
+    setZoom(1);
+    setNodes(computeDefaultNodes(friends));
+  };
+
+  const selectedFriend = friends.find((friend) => friend.id === selectedId);
 
   return (
     <div className="network-graph">
-
-      {/* -------------------------------------------------- */}
       {/* CONTROLS */}
-      {/* -------------------------------------------------- */}
       <div className="network-graph-controls">
         <div className="network-graph-title">
-          <span>Temporal Association Network</span>
+          <div className="network-graph-title-row">
+            <span>Temporal Association Network</span>
+            {friends.length > 0 && (
+              <span className="network-count-pill">
+                {friends.length} {friends.length === 1 ? 'connection' : 'connections'}
+              </span>
+            )}
+          </div>
           <small>
-            Based on observed check-ins within 48 hours
+            Observed check-ins within 48 hours ·{' '}
+            {habitFilter && habitFilter !== 'all'
+              ? `Filtered by "${habitFilter}"`
+              : 'Showing strongest shared habits'}
           </small>
         </div>
 
-        <div className="zoom-controls">
+        <div className="zoom-controls" role="group" aria-label="Graph zoom and layout controls">
           <button
             type="button"
             onClick={() =>
-              setZoom((z) =>
-                Math.max(
-                  MIN_ZOOM,
-                  +(z - 0.1).toFixed(2)
-                )
-              )
+              setZoom((z) => Math.max(MIN_ZOOM, +(z - 0.1).toFixed(2)))
             }
+            disabled={zoom <= MIN_ZOOM || loading || !friends.length}
             aria-label="Zoom out"
+            title="Zoom out"
           >
-            <ZoomOut size={16} />
+            <ZoomOut size={15} />
           </button>
+
+          <span className="zoom-readout" aria-live="polite">
+            {Math.round(zoom * 100)}%
+          </span>
 
           <button
             type="button"
             onClick={() =>
-              setZoom((z) =>
-                Math.min(
-                  MAX_ZOOM,
-                  +(z + 0.1).toFixed(2)
-                )
-              )
+              setZoom((z) => Math.min(MAX_ZOOM, +(z + 0.1).toFixed(2)))
             }
+            disabled={zoom >= MAX_ZOOM || loading || !friends.length}
             aria-label="Zoom in"
+            title="Zoom in"
           >
-            <ZoomIn size={16} />
+            <ZoomIn size={15} />
           </button>
 
           <button
             type="button"
-            onClick={() => setZoom(1)}
-            aria-label="Reset zoom"
+            onClick={handleResetView}
+            disabled={loading || !friends.length}
+            aria-label="Reset zoom and layout"
+            title="Reset zoom and layout"
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={15} />
           </button>
         </div>
       </div>
 
-      {/* -------------------------------------------------- */}
-      {/* GRAPH */}
-      {/* -------------------------------------------------- */}
+      {/* GRAPH CANVAS */}
       <div
         className="network-graph-canvas"
         style={{ height }}
         onWheel={handleWheel}
       >
-        {loading && (
-          <p className="text-muted network-graph-message">
-            Loading network…
-          </p>
-        )}
+        {loading && <SkeletonGraphLoader />}
 
         {!loading && error && (
-          <p className="text-muted network-graph-message">
-            {error}. Start the FastAPI server on port 8000.
-          </p>
+          <div className="network-graph-state-wrap">
+            <EmptyState
+              icon={Share2}
+              title="Unable to Load Network Graph"
+              description={`${error}. Please make sure the FastAPI server is running on port 8000.`}
+              compact
+            />
+          </div>
         )}
 
-        {!loading &&
-          !error &&
-          !friends.length && (
-            <p className="text-muted network-graph-message">
-              No temporal associations found yet.
-            </p>
-          )}
+        {!loading && !error && !friends.length && (
+          <div className="network-graph-state-wrap">
+            <EmptyState
+              icon={Share2}
+              title={
+                habitFilter && habitFilter !== 'all'
+                  ? `No network links for "${habitFilter}" yet`
+                  : 'No temporal associations found yet'
+              }
+              description={
+                habitFilter && habitFilter !== 'all'
+                  ? 'None of your friends have overlapping check-ins within 48 hours for this specific habit yet.'
+                  : 'Temporal associations appear automatically when you and your friends check in to shared habits within a 48-hour window.'
+              }
+              actionLabel={
+                habitFilter && habitFilter !== 'all' && onResetFilter
+                  ? 'Show All Habits'
+                  : undefined
+              }
+              onAction={
+                habitFilter && habitFilter !== 'all' && onResetFilter
+                  ? onResetFilter
+                  : undefined
+              }
+              compact
+            />
+          </div>
+        )}
 
-        {!loading &&
-          !error &&
-          !!friends.length && (
-            <svg
-              ref={svgRef}
-              viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-              width="100%"
-              height="100%"
-              className="network-graph-svg"
-            >
-              <defs>
-                <linearGradient
-                  id="you-gradient"
-                  x1="0%"
-                  y1="0%"
-                  x2="100%"
-                  y2="100%"
-                >
-                  <stop
-                    offset="0%"
-                    stopColor="#6366f1"
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="#a855f7"
-                  />
-                </linearGradient>
-
-                <filter
-                  id="network-shadow"
-                  x="-50%"
-                  y="-50%"
-                  width="200%"
-                  height="200%"
-                >
-                  <feDropShadow
-                    dx="0"
-                    dy="5"
-                    stdDeviation="7"
-                    floodOpacity="0.16"
-                  />
-                </filter>
-              </defs>
-
-              <g
-                transform={`translate(${CENTER.x} ${CENTER.y}) scale(${zoom}) translate(${-CENTER.x} ${-CENTER.y})`}
+        {!loading && !error && !!friends.length && (
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+            width="100%"
+            height="100%"
+            className="network-graph-svg"
+            role="img"
+            aria-label="Interactive Habit Influence Network Graph"
+          >
+            <defs>
+              <linearGradient
+                id="you-gradient"
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
               >
+                <stop offset="0%" stopColor="#4f46e5" />
+                <stop offset="100%" stopColor="#9333ea" />
+              </linearGradient>
 
-                {/* ------------------------------------------------ */}
-                {/* CONNECTIONS */}
-                {/* ------------------------------------------------ */}
-                {friends.map((friend) => {
-                  const pos =
-                    nodes[friend.id] || CENTER;
+              <filter
+                id="network-shadow"
+                x="-50%"
+                y="-50%"
+                width="200%"
+                height="200%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="5"
+                  stdDeviation="7"
+                  floodOpacity="0.16"
+                />
+              </filter>
 
-                  const colors = scoreColor(
-                    friend.score
-                  );
+              <filter
+                id="network-glow-filter"
+                x="-50%"
+                y="-50%"
+                width="200%"
+                height="200%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="10"
+                  floodColor="#6366f1"
+                  floodOpacity="0.35"
+                />
+              </filter>
+            </defs>
 
-                  const width =
-                    2.5 +
-                    Number(friend.score || 0) * 9;
+            <g
+              transform={`translate(${CENTER.x} ${CENTER.y}) scale(${zoom}) translate(${-CENTER.x} ${-CENTER.y})`}
+            >
+              {/* Subtle reference orbit rings */}
+              <ellipse
+                cx={CENTER.x}
+                cy={CENTER.y}
+                rx={RADIUS_X * 0.55}
+                ry={RADIUS_Y * 0.55}
+                className="network-orbit-ring"
+              />
+              <ellipse
+                cx={CENTER.x}
+                cy={CENTER.y}
+                rx={RADIUS_X}
+                ry={RADIUS_Y}
+                className="network-orbit-ring outer"
+              />
 
-                  return (
-                    <g key={`edge-${friend.id}`}>
+              {/* CONNECTIONS */}
+              {friends.map((friend) => {
+                const pos = nodes[friend.id] || CENTER;
+                const colors = scoreColor(friend.score);
+                const isHighlighted =
+                  selectedId === friend.id || hoveredId === friend.id;
+                const isDimmed =
+                  (selectedId && selectedId !== friend.id) ||
+                  (hoveredId && hoveredId !== friend.id);
+
+                const width =
+                  (isHighlighted ? 4 : 2.5) + Number(friend.score || 0) * 8.5;
+
+                const midX = CENTER.x + (pos.x - CENTER.x) * 0.54;
+                const midY = CENTER.y + (pos.y - CENTER.y) * 0.54;
+
+                return (
+                  <g
+                    key={`edge-${friend.id}`}
+                    className={`network-edge-group ${
+                      isHighlighted ? 'highlighted' : ''
+                    } ${isDimmed ? 'dimmed' : ''}`}
+                  >
+                    {isHighlighted && (
                       <line
                         x1={CENTER.x}
                         y1={CENTER.y}
                         x2={pos.x}
                         y2={pos.y}
                         stroke={colors.fill}
-                        strokeOpacity={
-                          0.3 +
-                          Number(friend.score || 0) *
-                            0.55
-                        }
-                        strokeWidth={width}
+                        strokeOpacity={0.2}
+                        strokeWidth={width + 8}
                         strokeLinecap="round"
                       />
+                    )}
 
-                      {/* Small percentage marker near edge */}
+                    <line
+                      x1={CENTER.x}
+                      y1={CENTER.y}
+                      x2={pos.x}
+                      y2={pos.y}
+                      stroke={colors.fill}
+                      strokeOpacity={
+                        isHighlighted
+                          ? 0.92
+                          : 0.32 + Number(friend.score || 0) * 0.52
+                      }
+                      strokeWidth={width}
+                      strokeLinecap="round"
+                    />
+
+                    {/* Edge percentage pill */}
+                    <g transform={`translate(${midX}, ${midY})`}>
+                      <rect
+                        x={-24}
+                        y={-11}
+                        width={48}
+                        height={22}
+                        rx={11}
+                        fill="rgba(255, 255, 255, 0.94)"
+                        stroke={isHighlighted ? colors.fill : 'rgba(203, 213, 225, 0.85)'}
+                        strokeWidth={isHighlighted ? 1.8 : 1}
+                      />
                       <text
-                        x={
-                          CENTER.x +
-                          (pos.x - CENTER.x) * 0.58
-                        }
-                        y={
-                          CENTER.y +
-                          (pos.y - CENTER.y) * 0.58
-                        }
+                        x={0}
+                        y={4}
                         textAnchor="middle"
                         className="network-edge-label"
+                        fill={colors.ring}
                       >
                         {formatPercent(friend.score)}
                       </text>
                     </g>
-                  );
-                })}
+                  </g>
+                );
+              })}
 
-                {/* ------------------------------------------------ */}
-                {/* CENTER USER */}
-                {/* ------------------------------------------------ */}
-                <g
-                  filter="url(#network-shadow)"
-                  className="network-center-node"
+              {/* CENTER USER */}
+              <g
+                filter="url(#network-shadow)"
+                className="network-center-node"
+              >
+                <circle
+                  cx={CENTER.x}
+                  cy={CENTER.y}
+                  r={58}
+                  fill="rgba(99, 102, 241, 0.12)"
+                />
+                <circle
+                  cx={CENTER.x}
+                  cy={CENTER.y}
+                  r={46}
+                  fill="url(#you-gradient)"
+                  stroke="#ffffff"
+                  strokeWidth={4.5}
+                />
+
+                <text
+                  x={CENTER.x}
+                  y={CENTER.y - 3}
+                  textAnchor="middle"
+                  className="network-node-label you"
                 >
-                  <circle
-                    cx={CENTER.x}
-                    cy={CENTER.y}
-                    r={48}
-                    fill="url(#you-gradient)"
-                    stroke="#ffffff"
-                    strokeWidth={5}
-                  />
+                  You
+                </text>
 
-                  <text
-                    x={CENTER.x}
-                    y={CENTER.y - 2}
-                    textAnchor="middle"
-                    className="network-node-label you"
-                  >
-                    You
-                  </text>
+                <text
+                  x={CENTER.x}
+                  y={CENTER.y + 16}
+                  textAnchor="middle"
+                  className="network-center-subtitle"
+                >
+                  Pallavi
+                </text>
+              </g>
 
-                  <text
-                    x={CENTER.x}
-                    y={CENTER.y + 18}
-                    textAnchor="middle"
-                    className="network-center-subtitle"
-                  >
-                    Pallavi
-                  </text>
-                </g>
+              {/* FRIEND NODES */}
+              {friends.map((friend) => {
+                const pos = nodes[friend.id] || CENTER;
+                const colors = scoreColor(friend.score);
+                const isSelected = selectedId === friend.id;
+                const isHovered = hoveredId === friend.id;
+                const habitName =
+                  friend.shared_habit || friend.top_habit || 'Shared habit';
 
-                {/* ------------------------------------------------ */}
-                {/* FRIEND NODES */}
-                {/* ------------------------------------------------ */}
-                {friends.map((friend) => {
-                  const pos =
-                    nodes[friend.id] || CENTER;
-
-                  const colors = scoreColor(
-                    friend.score
-                  );
-
-                  const isSelected =
-                    selectedId === friend.id;
-
-                  return (
-                    <g
-                      key={friend.id}
-                      transform={`translate(${pos.x} ${pos.y})`}
-                      className={`network-node ${
-                        isSelected
-                          ? 'selected'
-                          : ''
-                      }`}
-                      onMouseDown={(event) =>
-                        startDrag(event, friend.id)
+                return (
+                  <g
+                    key={friend.id}
+                    transform={`translate(${pos.x} ${pos.y})`}
+                    className={`network-node ${isSelected ? 'selected' : ''} ${
+                      isHovered ? 'hovered' : ''
+                    }`}
+                    onMouseDown={(event) => startDrag(event, friend.id)}
+                    onTouchStart={(event) => startDrag(event, friend.id)}
+                    onMouseEnter={() => setHoveredId(friend.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    onFocus={() => setHoveredId(friend.id)}
+                    onBlur={() => setHoveredId(null)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedId((prev) =>
+                          prev === friend.id ? null : friend.id
+                        );
                       }
-                    >
-                      {/* Soft glow */}
-                      <circle
-                        r={47}
-                        fill={colors.soft}
-                        className="network-node-glow"
-                      />
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-pressed={isSelected}
+                    aria-label={`${friend.name}, shared habit ${habitName}, ${formatPercent(
+                      friend.score
+                    )} temporal association. Press Enter for details.`}
+                  >
+                    {/* Soft glow */}
+                    <circle
+                      r={isSelected || isHovered ? 48 : 43}
+                      fill={colors.soft}
+                      className="network-node-glow"
+                    />
 
-                      {/* Main node */}
+                    {/* Selection dashed ring */}
+                    {isSelected && (
                       <circle
-                        r={34}
-                        fill={colors.fill}
+                        r={41}
+                        fill="none"
+                        stroke={colors.ring}
+                        strokeWidth={2}
+                        strokeDasharray="5 3"
+                      />
+                    )}
+
+                    {/* Main node */}
+                    <circle
+                      r={33}
+                      fill={colors.fill}
+                      stroke={isSelected ? '#1e1b4b' : '#ffffff'}
+                      strokeWidth={isSelected ? 4 : 3}
+                      filter={
+                        isSelected || isHovered
+                          ? 'url(#network-glow-filter)'
+                          : 'url(#network-shadow)'
+                      }
+                    />
+
+                    {/* Initials */}
+                    <text
+                      y={5}
+                      textAnchor="middle"
+                      className="network-node-label"
+                    >
+                      {initials(friend.name)}
+                    </text>
+
+                    {/* Label Card Plate for clean readability */}
+                    <g transform="translate(0, 44)">
+                      <rect
+                        x={-72}
+                        y={0}
+                        width={144}
+                        height={62}
+                        rx={12}
+                        fill="rgba(255, 255, 255, 0.92)"
                         stroke={
                           isSelected
-                            ? '#1e1b4b'
-                            : '#ffffff'
+                            ? colors.fill
+                            : 'rgba(226, 232, 240, 0.9)'
                         }
-                        strokeWidth={
-                          isSelected ? 4 : 3
-                        }
-                        filter="url(#network-shadow)"
+                        strokeWidth={isSelected ? 1.8 : 1}
                       />
-
-                      {/* Initials */}
-                      <text
-                        y={6}
-                        textAnchor="middle"
-                        className="network-node-label"
-                      >
-                        {initials(friend.name)}
-                      </text>
-
                       {/* Full name */}
                       <text
-                        y={62}
+                        y={19}
                         textAnchor="middle"
                         className="network-friend-name"
                       >
@@ -524,87 +658,110 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
 
                       {/* Shared habit */}
                       <text
-                        y={82}
+                        y={36}
                         textAnchor="middle"
                         className="network-friend-habit"
                       >
-                        {friend.shared_habit ||
-                          friend.top_habit ||
-                          'Shared habit'}
+                        {habitName}
                       </text>
 
                       {/* Association percentage */}
                       <text
-                        y={104}
+                        y={52}
                         textAnchor="middle"
                         className="network-friend-score"
                         fill={colors.ring}
                       >
-                        {formatPercent(
-                          friend.score
-                        )}{' '}
-                        association
+                        {formatPercent(friend.score)} · {getStrengthLabel(friend.score)}
                       </text>
                     </g>
-                  );
-                })}
-              </g>
-            </svg>
-          )}
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+        )}
       </div>
 
-      {/* -------------------------------------------------- */}
       {/* SELECTED PERSON DETAILS */}
-      {/* -------------------------------------------------- */}
       {selectedFriend && (
-        <div className="network-graph-tooltip">
+        <div
+          className="network-graph-tooltip"
+          role="region"
+          aria-label={`Details for ${selectedFriend.name}`}
+        >
           <div className="network-tooltip-main">
             <div
               className="network-tooltip-avatar"
               style={{
-                background:
-                  scoreColor(
-                    selectedFriend.score
-                  ).fill,
+                background: scoreColor(selectedFriend.score).fill,
               }}
             >
               {initials(selectedFriend.name)}
             </div>
 
-            <div>
-              <h4>{selectedFriend.name}</h4>
+            <div className="network-tooltip-body">
+              <div className="network-tooltip-header-row">
+                <h4>{selectedFriend.name}</h4>
+                <span
+                  className="network-strength-badge"
+                  style={{
+                    background: scoreColor(selectedFriend.score).badgeBg,
+                    color: scoreColor(selectedFriend.score).ring,
+                  }}
+                >
+                  <Sparkles size={12} />
+                  {formatPercent(selectedFriend.score)} ·{' '}
+                  {getStrengthLabel(selectedFriend.score)} Influence
+                </span>
+              </div>
 
               <p>
-                Shared habit:{' '}
+                Top shared habit:{' '}
                 <strong>
                   {selectedFriend.shared_habit ||
                     selectedFriend.top_habit ||
                     '—'}
                 </strong>
-              </p>
-
-              <p>
-                Temporal association:{' '}
-                <strong>
-                  {formatPercent(
-                    selectedFriend.score
+                {Array.isArray(selectedFriend.shared_habits) &&
+                  selectedFriend.shared_habits.length > 1 && (
+                    <span>
+                      {' '}
+                      (also shares:{' '}
+                      {selectedFriend.shared_habits
+                        .filter(
+                          (h) =>
+                            h !==
+                            (selectedFriend.shared_habit ||
+                              selectedFriend.top_habit)
+                        )
+                        .join(', ')}
+                      )
+                    </span>
                   )}
-                </strong>{' '}
-                ·{' '}
-                {getStrengthLabel(
-                  selectedFriend.score
-                )}
               </p>
 
-              <p>
-                {selectedFriend.following_instances ||
-                  0}{' '}
-                of{' '}
-                {selectedFriend.observed_instances ||
-                  0}{' '}
-                observed instances occurred within
-                the 48-hour window after this person's
-                check-in.
+              <p className="network-tooltip-evidence">
+                {selectedFriend.following_instances != null &&
+                selectedFriend.observed_instances != null ? (
+                  <>
+                    <strong>{selectedFriend.following_instances}</strong> of{' '}
+                    <strong>{selectedFriend.observed_instances}</strong> observed
+                    check-ins occurred within the{' '}
+                    <strong>
+                      {selectedFriend.observation_window_hours || 48}-hour
+                    </strong>{' '}
+                    window following {selectedFriend.name}&apos;s check-in.
+                  </>
+                ) : (
+                  <>
+                    Calculated from observed check-in alignment within the{' '}
+                    <strong>
+                      {selectedFriend.observation_window_hours || 48}-hour
+                    </strong>{' '}
+                    temporal window.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -613,16 +770,15 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
             type="button"
             className="network-graph-tooltip-close"
             onClick={() => setSelectedId(null)}
-            aria-label="Close details"
+            aria-label="Close friend details"
+            title="Close (Esc)"
           >
             <X size={18} />
           </button>
         </div>
       )}
 
-      {/* -------------------------------------------------- */}
       {/* LEGEND */}
-      {/* -------------------------------------------------- */}
       <div className="network-legend">
         <span className="legend-item">
           <span
@@ -649,8 +805,7 @@ const NetworkGraph = ({ height = 420, limit = 8, habitFilter = 'all' }) => {
         </span>
 
         <span className="legend-item network-legend-hint">
-          Drag nodes · scroll to zoom · click for
-          evidence
+          Drag nodes · scroll to zoom · click or press Enter for evidence
         </span>
       </div>
     </div>
